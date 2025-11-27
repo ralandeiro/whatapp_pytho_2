@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+        <div>
+            <h2 class="text-xl font-bold text-gray-800">Dashboard - Resumo Geral</h2>
+            <p class="text-sm text-gray-500">Acompanhamento de métricas de envio e engajamento.</p>
+        </div>
+        <form method="GET" class="flex gap-2 mt-4 md:mt-0">
+            <select name="periodo" onchange="this.form.submit()" class="p-2 border rounded-lg text-sm bg-gray-50 text-gray-700 focus:ring-2 focus:ring-blue-500">
+                <option value="7" {% if filtro_periodo == '7' %}selected{% endif %}>Última Semana</option>
+                <option value="15" {% if filtro_periodo == '15' %}selected{% endif %}>Últimos 15 Dias</option>
+                <option value="30" {% if filtro_periodo == '30' %}selected{% endif %}>Último Mês</option>
+                <option value="todos" {% if filtro_periodo == 'todos' %}selected{% endif %}>Todo o Período</option>
+            </select>
+            {% if current_user.nivel_acesso == 'admin' %}
+            <select name="unidade" onchange="this.form.submit()" class="p-2 border rounded-lg text-sm bg-gray-50 text-gray-700 focus:ring-2 focus:ring-blue-500">
+                <option value="">Todas as Unidades</option>
+                {% for u in unidades %}
+                    <option value="{{ u.nome }}" {% if filtro_unidade == u.nome %}selected{% endif %}>{{ u.nome }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+        </form>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-500 relative overflow-hidden">
+            <div class="flex justify-between items-start z-10 relative">
+                <div><p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Enviadas</p><h3 class="text-3xl font-bold text-gray-800 mt-1">{{ total_enviadas }}</h3></div>
+                <div class="bg-blue-50 p-3 rounded-full text-blue-500"><i class="fa-solid fa-paper-plane text-xl"></i></div>
+            </div>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500 relative overflow-hidden">
+            <div class="flex justify-between items-start">
+                <div><p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Entregues</p><div class="flex items-baseline gap-2"><h3 class="text-3xl font-bold text-gray-800 mt-1">{{ total_entregues }}</h3><span class="text-sm font-bold text-green-600">({{ taxa_entrega }}%)</span></div></div>
+                <div class="bg-green-50 p-3 rounded-full text-green-500"><i class="fa-solid fa-check-double text-xl"></i></div>
+            </div>
+            <div class="w-full bg-gray-100 h-1 mt-4 rounded-full overflow-hidden"><div class="bg-green-500 h-1 rounded-full" style="width: {{ taxa_entrega }}%"></div></div>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-purple-500 relative overflow-hidden">
+            <div class="flex justify-between items-start">
+                <div><p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Lidas</p><div class="flex items-baseline gap-2"><h3 class="text-3xl font-bold text-gray-800 mt-1">{{ total_lidas }}</h3><span class="text-sm font-bold text-purple-600">({{ taxa_leitura }}%)</span></div></div>
+                <div class="bg-purple-50 p-3 rounded-full text-purple-500"><i class="fa-solid fa-eye text-xl"></i></div>
+            </div>
+            <div class="w-full bg-gray-100 h-1 mt-4 rounded-full overflow-hidden"><div class="bg-purple-500 h-1 rounded-full" style="width: {{ taxa_leitura }}%"></div></div>
+        </div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-bold text-gray-700 mb-4 border-b pb-2">Por Módulo</h3>
+            <div class="space-y-4">
+                {% for mod in por_modulo %}
+                <div class="flex items-center justify-between p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center {{ 'bg-green-100 text-green-600' if mod.modulo == 'boas_vindas' else 'bg-yellow-100 text-yellow-600' }}"><i class="{{ 'fa-solid fa-rocket' if mod.modulo == 'boas_vindas' else 'fa-solid fa-file-invoice-dollar' }}"></i></div>
+                        <span class="font-medium text-gray-700 capitalize">{{ mod.modulo|replace('_', ' ') }}</span>
+                    </div>
+                    <span class="font-bold text-gray-800">{{ mod.qtd }} envios</span>
+                </div>
+                {% else %}<p class="text-gray-400 text-sm text-center py-4">Nenhum dado neste período.</p>{% endfor %}
+            </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-bold text-gray-700 mb-4 border-b pb-2">Por Unidade</h3>
+            <div class="space-y-4">
+                {% for uni in por_unidade %}
+                <div>
+                    <div class="flex justify-between mb-1"><span class="text-sm font-medium text-gray-700">{{ uni.nome }}</span><span class="text-sm font-bold text-gray-600">{{ uni.qtd }} ({{ uni.percentual }}%)</span></div>
+                    <div class="w-full bg-gray-100 rounded-full h-2"><div class="bg-blue-600 h-2 rounded-full" style="width: {{ uni.percentual }}%"></div></div>
+                </div>
+                {% else %}<p class="text-gray-400 text-sm text-center py-4">Nenhum dado neste período.</p>{% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+    
+    <div class="bg-white rounded-lg shadow p-6 border-l-4 border-yellow-500">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold text-gray-700">
+                <i class="fa-solid fa-file-invoice-dollar text-yellow-500 mr-2"></i> Cobrança Inteligente
+            </h2>
+            <a href="/templates" class="text-blue-600 hover:underline text-sm"><i class="fa-solid fa-gear"></i> Configurar Regras</a>
+        </div>
+        
+        <form method="POST" enctype="multipart/form-data" class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Layout do Excel</label>
+                <select name="layout_id" class="block w-full p-2.5 border border-gray-300 rounded-lg bg-gray-50" required>
+                    <option value="">-- Selecione --</option>
+                    {% for layout in layouts %}
+                        <option value="{{ layout.id }}" {% if layout_selecionado == layout.id %}selected{% endif %}>{{ layout.nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="flex gap-2">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Arquivo de Inadimplentes</label>
+                    <input type="file" name="file" accept=".xlsx" required class="block w-full text-sm border border-gray-300 rounded-lg cursor-pointer bg-gray-50">
+                </div>
+                <button type="submit" class="bg-yellow-600 text-white px-6 py-2.5 rounded-lg hover:bg-yellow-700 font-bold shadow-sm self-end h-10">
+                    Processar
+                </button>
+            </div>
+        </form>
+    </div>
+
+    {% if preview %}
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-lg font-bold mb-4 text-gray-800">Resultado da Análise</h3>
+        
+        <form method="POST">
+            <input type="hidden" name="confirmar_envio" value="true">
+            
+            <div class="overflow-x-auto max-h-96 mb-6 border rounded-lg">
+                <table class="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead class="bg-gray-50 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-2 text-left font-bold text-gray-500">Cliente</th>
+                            <th class="px-4 py-2 text-left font-bold text-gray-500">Situação</th>
+                            <th class="px-4 py-2 text-left font-bold text-gray-500">Template Aplicado</th>
+                            <th class="px-4 py-2 text-left font-bold text-gray-500">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for item in preview %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-2">
+                                <div class="font-bold">{{ item.nome }}</div>
+                                <div class="text-xs text-gray-400">{{ item.dados.telefone }} | {{ item.unidade_nome }}</div>
+                            </td>
+                            <td class="px-4 py-2">
+                                <div class="text-xs">
+                                    <span class="block">Débitos: <b>{{ item.dados.debitos }}</b></span>
+                                    <span class="block">Valor: R$ {{ item.dados.valor }}</span>
+                                    <span class="block text-red-500">Sem acesso há {{ item.dias_sem_acesso }} dias</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-2">
+                                {% if item.template_nome != "-" %}
+                                    <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded block w-fit mb-1">{{ item.template_nome }}</span>
+                                    <div class="text-[10px] text-gray-500 truncate w-48" title="{{ item.msg_preview }}">{{ item.msg_preview }}</div>
+                                {% else %}
+                                    <span class="text-gray-400 text-xs italic">Nenhuma regra compatível</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-2">
+                                {% if 'Cooldown' in item.status %}
+                                    <span class="bg-orange-100 text-orange-800 text-xs font-bold px-2 py-1 rounded">{{ item.status }}</span>
+                                {% elif item.status == 'Pronto' %}
+                                    <span class="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded"><i class="fa-solid fa-check"></i> Enviar</span>
+                                {% else %}
+                                    <span class="text-gray-400 text-xs">{{ item.status }}</span>
+                                {% endif %}
+                            </td>
+                            <input type="hidden" name="dados_envio" value='{{ item | tojson | safe }}'>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4 border-t">
+                <a href="/cobranca" class="px-4 py-2 border rounded text-gray-700 hover:bg-gray-50">Cancelar</a>
+                <button type="submit" onclick="return confirm('Iniciar cobrança?')" class="bg-yellow-600 text-white px-6 py-2 rounded-lg hover:bg-yellow-700 font-bold">
+                    <i class="fa-solid fa-paper-plane mr-2"></i> Enviar Cobranças
+                </button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

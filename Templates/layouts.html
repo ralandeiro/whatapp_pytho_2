@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+    
+    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <h2 class="text-xl font-bold text-gray-800 mb-4"><i class="fa-solid fa-table text-blue-500"></i> Configurar Layout de Importação</h2>
+        <p class="text-sm text-gray-500 mb-6">
+            Digite o <b>nome exato do cabeçalho</b> da sua planilha Excel para cada campo abaixo.
+            O sistema usará isso para ler seu arquivo corretamente.
+        </p>
+
+        <form method="POST" class="space-y-6">
+            <div>
+                <label class="block text-sm font-bold text-gray-700">Nome do Layout</label>
+                <input type="text" name="nome" placeholder="Ex: Exportação Sistema Catraca" required class="w-full p-2 border rounded bg-gray-50 focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-blue-50 p-4 rounded border border-blue-100">
+                <h3 class="md:col-span-2 font-bold text-sm text-blue-800 uppercase border-b border-blue-200 pb-2 mb-2">
+                    <i class="fa-solid fa-asterisk text-[10px] align-top"></i> Campos Obrigatórios
+                </h3>
+                
+                <div>
+                    <label class="text-xs font-bold text-gray-700 block mb-1">Telefone Celular Extraído</label>
+                    <input type="text" name="map_telefone" class="w-full p-2 border rounded text-sm" placeholder="Nome da coluna no Excel" required>
+                    <p class="text-[10px] text-gray-500 mt-1">Essencial para o envio.</p>
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-gray-700 block mb-1">Nome Completo Extraído</label>
+                    <input type="text" name="map_aluno" class="w-full p-2 border rounded text-sm" placeholder="Nome da coluna no Excel" required>
+                    <p class="text-[10px] text-gray-500 mt-1">Usado para identificar o cliente.</p>
+                </div>
+            </div>
+
+            <div class="bg-gray-50 p-4 rounded border border-gray-200">
+                <h3 class="font-bold text-sm text-gray-500 uppercase border-b pb-2 mb-4">Campos Opcionais (Dados do Contrato/Acesso)</h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="text-xs font-bold text-gray-600 block mb-1">Unidade</label>
+                        <input type="text" name="map_unidade" class="w-full p-2 border rounded text-sm" placeholder="Coluna Unidade">
+                    </div>
+
+                    <div>
+                        <label class="text-xs font-bold text-gray-600 block mb-1">Matrícula</label>
+                        <input type="text" name="map_matricula" class="w-full p-2 border rounded text-sm">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-600 block mb-1">Plano</label>
+                        <input type="text" name="map_plano" class="w-full p-2 border rounded text-sm">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-600 block mb-1">Purchase</label>
+                        <input type="text" name="map_purchase" class="w-full p-2 border rounded text-sm">
+                    </div>
+
+                    <div>
+                        <label class="text-xs font-bold text-gray-600 block mb-1">Data Compra</label>
+                        <input type="text" name="map_data_compra" class="w-full p-2 border rounded text-sm">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-600 block mb-1">Início Plano</label>
+                        <input type="text" name="map_inicio_plano" class="w-full p-2 border rounded text-sm">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-600 block mb-1">Tempo Ativo</label>
+                        <input type="text" name="map_tempo_ativo" class="w-full p-2 border rounded text-sm">
+                    </div>
+
+                    <div>
+                        <label class="text-xs font-bold text-gray-600 block mb-1">Débitos</label>
+                        <input type="text" name="map_debitos" class="w-full p-2 border rounded text-sm">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-600 block mb-1">Valor</label>
+                        <input type="text" name="map_valor" class="w-full p-2 border rounded text-sm">
+                    </div>
+
+                    <div>
+                        <label class="text-xs font-bold text-gray-600 block mb-1">Unidade Último Acesso</label>
+                        <input type="text" name="map_unidade_ultimo_acesso" class="w-full p-2 border rounded text-sm">
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-600 block mb-1">Data/Hora Último Acesso</label>
+                        <input type="text" name="map_data_hora_ultimo_acesso" class="w-full p-2 border rounded text-sm">
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-right">
+                <button type="submit" class="bg-green-600 text-white px-8 py-2 rounded-lg hover:bg-green-700 font-bold shadow-md transition transform hover:scale-105">
+                    Salvar Layout
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4">
+        {% for layout in layouts %}
+        <div class="bg-white p-4 rounded shadow-sm border flex justify-between items-center group hover:border-blue-300 transition">
+            <div>
+                <h4 class="font-bold text-gray-800 text-lg">{{ layout.nome }}</h4>
+                <div class="text-xs text-gray-500 mt-2 flex flex-wrap gap-2">
+                    {% for k, v in layout.map_dict.items() %}
+                        <span class="bg-gray-100 px-2 py-1 rounded border border-gray-200">
+                            <span class="font-bold text-gray-600">{{ k|replace('_', ' ')|title }}:</span> {{ v }}
+                        </span>
+                    {% endfor %}
+                </div>
+            </div>
+            <a href="/excluir-layout/{{layout.id}}" onclick="return confirm('Tem certeza que deseja excluir este layout?')" class="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition">
+                <i class="fa-solid fa-trash"></i>
+            </a>
+        </div>
+        {% endfor %}
+        
+        {% if not layouts %}
+        <div class="text-center py-8 text-gray-400">
+            <i class="fa-solid fa-folder-open text-4xl mb-3"></i>
+            <p>Nenhum layout configurado ainda.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

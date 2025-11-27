@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão WhatsApp Academia</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .animation-fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Spinner Overlay */
+        #loading-overlay {
+            background-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(2px);
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden text-gray-800">
+
+    <div id="loading-overlay" class="fixed inset-0 z-50 hidden flex flex-col items-center justify-center">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-green-600 mb-4"></div>
+        <h3 class="text-xl font-bold text-gray-700">Processando...</h3>
+        <p class="text-sm text-gray-500">Por favor, aguarde.</p>
+    </div>
+
+    <aside class="w-64 bg-slate-900 text-white flex flex-col shadow-xl z-10">
+        <div class="p-6 flex items-center border-b border-slate-800">
+            <i class="fa-brands fa-whatsapp text-green-400 text-3xl mr-3"></i>
+            <div>
+                <h1 class="font-bold text-xl tracking-wide">GymZap</h1>
+                <p class="text-xs text-slate-400">Automação v2.1</p>
+            </div>
+        </div>
+
+        <nav class="flex-1 overflow-y-auto py-4">
+            <ul class="space-y-1 px-3">
+                <li><a href="/" class="flex items-center px-4 py-3 rounded-lg hover:bg-slate-800 transition-colors group"><i class="fa-solid fa-chart-line w-6 text-center text-slate-400 group-hover:text-white"></i><span class="ml-2 font-medium">Dashboard</span></a></li>
+                <li class="px-4 pt-6 pb-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Operacional</li>
+                <li><a href="/boas-vindas" class="flex items-center px-4 py-3 rounded-lg hover:bg-slate-800 transition-colors group"><i class="fa-solid fa-rocket w-6 text-center text-green-400 group-hover:text-green-300"></i><span class="ml-2 font-medium">Boas-Vindas</span></a></li>
+                <li><a href="/layouts" class="flex items-center px-4 py-3 rounded-lg hover:bg-slate-800 transition-colors group"><i class="fa-solid fa-table-columns w-6 text-center text-slate-400 group-hover:text-white"></i><span class="ml-2 font-medium">Layouts Excel</span></a></li>
+                <li><a href="/templates" class="flex items-center px-4 py-3 rounded-lg hover:bg-slate-800 transition-colors group"><i class="fa-solid fa-file-pen w-6 text-center text-slate-400 group-hover:text-white"></i><span class="ml-2 font-medium">Templates</span></a></li>
+                <li><a href="/respostas" class="flex items-center px-4 py-3 rounded-lg hover:bg-slate-800 transition-colors group"><i class="fa-solid fa-robot w-6 text-center text-blue-400 group-hover:text-white"></i><span class="ml-2 font-medium">Auto-Resposta</span></a></li>
+                <li>
+    <a href="/cobranca" class="flex items-center px-4 py-3 rounded-lg hover:bg-slate-800 transition-colors group">
+        <i class="fa-solid fa-file-invoice-dollar w-6 text-center text-yellow-400 group-hover:text-yellow-300 transition-colors"></i>
+        <span class="ml-2 font-medium text-yellow-50">Cobrança</span>
+    </a>
+</li>
+				
+                {% if current_user.nivel_acesso == 'admin' %}
+                <li class="px-4 pt-6 pb-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Admin</li>
+                <li><a href="/unidades" class="flex items-center px-4 py-3 rounded-lg hover:bg-slate-800 transition-colors group"><i class="fa-solid fa-building w-6 text-center text-slate-400 group-hover:text-white"></i><span class="ml-2 font-medium">Unidades</span></a></li>
+                <li><a href="/config-api" class="flex items-center px-4 py-3 rounded-lg hover:bg-slate-800 transition-colors group"><i class="fa-solid fa-server w-6 text-center text-slate-400 group-hover:text-white"></i><span class="ml-2 font-medium">APIs</span></a></li>
+<li>
+    <a href="/usuarios" class="flex items-center px-4 py-3 rounded-lg hover:bg-slate-800 transition-colors group">
+        <i class="fa-solid fa-user-gear w-6 text-center text-slate-400 group-hover:text-white transition-colors"></i>
+        <span class="ml-2 font-medium">Usuários</span>
+    </a>
+</li>              
+
+			  <li>
+    <a href="/teste" class="flex items-center px-4 py-3 rounded-lg hover:bg-slate-800 transition-colors group">
+        <i class="fa-solid fa-vial w-6 text-center text-slate-400 group-hover:text-white transition-colors"></i>
+        <span class="ml-2 font-medium">Teste Rápido</span>
+    </a>
+</li>
+				<li><a href="/gerentes" class="flex items-center px-4 py-3 rounded-lg hover:bg-slate-800 transition-colors group"><i class="fa-solid fa-users w-6 text-center text-slate-400 group-hover:text-white"></i><span class="ml-2 font-medium">Gerentes</span></a></li>
+                {% endif %}
+            </ul>
+        </nav>
+        <div class="p-4 border-t border-slate-800 text-xs text-slate-500 text-center">&copy; 2023 Sistema Academia</div>
+    </aside>
+
+    <div class="flex-1 flex flex-col h-screen overflow-hidden bg-gray-50">
+        <header class="bg-white shadow-sm z-0 h-16 flex items-center justify-between px-6">
+            <h2 class="text-lg font-semibold text-gray-700">Painel de Controle</h2>
+            <div class="flex items-center space-x-4">
+                <div class="text-right mr-2 hidden md:block">
+                    <p class="text-sm font-bold text-gray-700">{{ current_user.username }}</p>
+                    <p class="text-xs text-gray-500 uppercase">{{ current_user.nivel_acesso }}</p>
+                </div>
+                <div class="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 shadow-inner"><i class="fa-solid fa-user"></i></div>
+                <a href="/logout" class="text-red-500 hover:text-red-700 text-sm font-bold ml-2"><i class="fa-solid fa-sign-out-alt"></i> Sair</a>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-x-hidden overflow-y-auto p-6 relative">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="mb-6 space-y-2 max-w-4xl mx-auto animation-fade-in">
+                    {% for category, message in messages %}
+                        <div class="p-4 rounded-lg shadow-sm flex items-center {{ 'bg-green-50 text-green-700 border border-green-200' if category == 'success' else 'bg-red-50 text-red-700 border border-red-200' if category == 'error' else 'bg-yellow-50 text-yellow-700 border border-yellow-200' }}">
+                            <i class="{{ 'fa-solid fa-check-circle' if category == 'success' else 'fa-solid fa-triangle-exclamation' }} mr-3 text-lg"></i> {{ message }}
+                        </div>
+                    {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script>
+        // Ativa o spinner em qualquer envio de formulário
+        document.querySelectorAll('form').forEach(form => {
+            form.addEventListener('submit', function() {
+                // Pequeno delay para permitir validação HTML5
+                setTimeout(() => {
+                    if (form.checkValidity()) {
+                        document.getElementById('loading-overlay').classList.remove('hidden');
+                    }
+                }, 100);
+            });
+        });
+        
+        // Ativa spinner em links de ação perigosa (excluir)
+        document.querySelectorAll('a[href*="excluir"]').forEach(link => {
+            link.addEventListener('click', function(e) {
+                if(!confirm('Tem certeza?')) {
+                    e.preventDefault();
+                } else {
+                    document.getElementById('loading-overlay').classList.remove('hidden');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-8">
+    <div class="flex justify-between items-center">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-800">Configuração de APIs (Segura)</h2>
+            <p class="text-gray-500">Tokens são encriptados (AES-256) antes de serem salvos.</p>
+        </div>
+    </div>
+    
+    <div class="bg-white rounded-xl shadow-md p-6 border border-gray-100 border-l-4 border-green-500">
+        <h3 class="text-lg font-bold mb-4 text-gray-700">Adicionar/Atualizar Instância</h3>
+        <form method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="md:col-span-2 bg-gray-50 p-4 rounded-lg border">
+                <label class="block text-sm font-bold text-gray-700 mb-2">Vincular a:</label>
+                <div class="flex gap-4">
+                    <label class="flex items-center gap-2"><input type="radio" name="tipo_config" value="global" checked> <span>Todas (Global)</span></label>
+                    <label class="flex items-center gap-2"><input type="radio" name="tipo_config" value="especifica"> <span>Unidade Específica</span></label>
+                </div>
+                <select name="unidade_id" class="mt-2 w-full p-2 border rounded"><option value="">Selecione a Unidade...</option>{% for u in unidades %}<option value="{{ u.id }}">{{ u.nome }}</option>{% endfor %}</select>
+            </div>
+
+            <div><label class="block text-sm font-medium">Host da API</label><input type="text" name="api_host" required class="w-full p-2 border rounded"></div>
+            <div><label class="block text-sm font-medium">Instance Key</label><input type="text" name="instance_key" required class="w-full p-2 border rounded"></div>
+            <div class="md:col-span-2"><label class="block text-sm font-medium">Bearer Token (Será encriptado)</label><input type="password" name="bearer_token" required class="w-full p-2 border rounded"></div>
+
+            <div class="md:col-span-2 text-right"><button type="submit" class="bg-green-600 text-white px-6 py-2 rounded font-bold">Salvar Conexão</button></div>
+        </form>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for config in configs %}
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+            <h4 class="font-bold text-gray-800">{{ config.unidade_ref.nome if config.unidade_ref else 'GLOBAL' }}</h4>
+            <div class="text-xs text-green-600 mt-2"><i class="fa-solid fa-lock"></i> Token Encriptado</div>
+            <div class="mt-2 text-sm text-gray-500 truncate">Key: {{ config.instance_key }}</div>
+            <div class="mt-2 text-sm text-gray-500 truncate">Host: {{ config.api_host }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
