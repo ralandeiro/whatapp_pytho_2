@@ -1,0 +1,10 @@
+Flask
+requests
+pandas
+openpyxl
+SQLAlchemy
+Flask-SQLAlchemy
+Flask-Login
+Flask-Bcrypt
+cryptography
+Flask-APScheduler
