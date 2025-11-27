@@ -183,6 +183,46 @@ function loadMessages(id) {
         });
 }
 
+// Lógica da Imagem
+    const imgEl = document.getElementById('activeChatImg');
+    const iconEl = document.getElementById('activeChatIcon');
+    
+    if(fotoUrl && fotoUrl !== 'null') {
+        imgEl.src = fotoUrl;
+        imgEl.classList.remove('hidden');
+        iconEl.classList.add('hidden');
+    } else {
+        // Se não tem foto, tenta buscar agora (Lazy Load)
+        fetch('/api/chat/update_profile', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({chat_id: id})
+        }).then(r=>r.json()).then(d => {
+            if(d.url) {
+                imgEl.src = d.url;
+                imgEl.classList.remove('hidden');
+                iconEl.classList.add('hidden');
+            }
+        });
+        imgEl.classList.add('hidden');
+        iconEl.classList.remove('hidden');
+    }
+
+// Adicione isto para detectar digitação
+document.getElementById('msgInput').addEventListener('input', () => {
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(() => {
+        if(currentChatId) {
+            fetch('/api/chat/presence', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({chat_id: currentChatId})
+            });
+        }
+    }, 500);
+});
+
+
 // --- ENVIAR MENSAGEM ---
 function sendMessage() {
     const input = document.getElementById('msgInput');

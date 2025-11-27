@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import random
 import pandas as pd
@@ -6,6 +7,8 @@ import requests
 import json
 import io
 import re
+import webbrowser  # <--- Adicionado (para abrir o Chrome)
+from threading import Timer # <--- Adicionado (para corrigir o erro atual)
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -17,9 +20,28 @@ from werkzeug.utils import secure_filename
 from functools import wraps
 from cryptography.fernet import Fernet
 
+# ... (o resto do código continua igual)
+
+# --- FUNÇÃO PARA CORRIGIR CAMINHOS NO EXECUTÁVEL ---
+def resource_path(relative_path):
+    """ Obtém o caminho absoluto para recursos, funciona para dev e para PyInstaller """
+    try:
+        # PyInstaller cria uma pasta temporária e armazena o caminho em _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 # --- CONFIGURAÇÃO GERAL ---
-app = Flask(__name__)
-app.secret_key = 'chave_super_secreta_academia' # Em produção, use variáveis de ambiente
+# Aqui definimos explicitamente a pasta de templates para o modo executável
+if getattr(sys, 'frozen', False):
+    template_folder = resource_path('templates')
+    app = Flask(__name__, template_folder=template_folder)
+else:
+    app = Flask(__name__)
+
+app.secret_key = 'chave_super_secreta_academia'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -116,8 +138,12 @@ class Usuario(db.Model, UserMixin):
     nivel_acesso = db.Column(db.String(20), nullable=False)
     unidade = db.Column(db.String(50), nullable=True)
     ativo = db.Column(db.Boolean, default=True)
-    def set_password(self, password): self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
-    def check_password(self, password): return bcrypt.check_password_hash(self.password_hash, password)
+
+    def set_password(self, password):
+        self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+
+    def check_password(self, password):
+        return bcrypt.check_password_hash(self.password_hash, password)
 
 class Unidade(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -177,7 +203,6 @@ class RespostaAutomatica(db.Model):
     resposta = db.Column(db.Text, nullable=False)
     ativo = db.Column(db.Boolean, default=True)
 
-# --- MODELOS CHATFLOW (ESSENCIAIS PARA O CHAT) ---
 class Conversa(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     telefone = db.Column(db.String(20), unique=True, nullable=False)
@@ -188,12 +213,13 @@ class Conversa(db.Model):
     ultima_mensagem = db.Column(db.Text)
     data_atualizacao = db.Column(db.DateTime, default=datetime.now)
     etiquetas = db.Column(db.Text)
+    foto_perfil = db.Column(db.String(500))
     mensagens = db.relationship('MensagemChat', backref='conversa_ref', lazy=True, cascade="all, delete-orphan")
 
 class MensagemChat(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     conversa_id = db.Column(db.Integer, db.ForeignKey('conversa.id'), nullable=False)
-    remetente = db.Column(db.String(20)) # 'cliente' ou 'agente'
+    remetente = db.Column(db.String(20))
     tipo = db.Column(db.String(20))
     conteudo = db.Column(db.Text)
     data_hora = db.Column(db.DateTime, default=datetime.now)
@@ -213,18 +239,44 @@ class MegaAPI:
         if "@" in to: return to
         return f"{to}@s.whatsapp.net"
 
-    def verificar_status(self):
-        try:
-            url = f"{self.host}/rest/instance/{self.instance_key}"
-            resp = requests.get(url, headers=self.headers, timeout=10)
-            return resp.json()
-        except Exception as e: return {"error": True, "message": str(e)}
-
     def _post(self, endpoint, payload):
-        time.sleep(random.uniform(1, 2)) # Delay reduzido para chat interativo
+        time.sleep(random.uniform(1, 2))
         try:
             url = f"{self.host}/rest/sendMessage/{self.instance_key}/{endpoint}"
             resp = requests.post(url, json=payload, headers=self.headers, timeout=15)
+            return resp.json()
+        except Exception as e: return {"error": True, "message": str(e)}
+
+    def is_on_whatsapp(self, phone):
+        try:
+            phone = self._format_number(phone)
+            url = f"{self.host}/rest/instance/isOnWhatsApp/{self.instance_key}?jid={phone}"
+            resp = requests.get(url, headers=self.headers, timeout=5)
+            data = resp.json()
+            return data.get('exists', False)
+        except: return False
+
+    def get_profile_picture(self, phone):
+        try:
+            phone = self._format_number(phone)
+            url = f"{self.host}/rest/instance/getProfilePicture/{self.instance_key}?chat_id={phone}&type=image"
+            resp = requests.get(url, headers=self.headers, timeout=5)
+            data = resp.json()
+            return data.get('data') if not data.get('error') else None
+        except: return None
+
+    def set_presence(self, phone, status='composing'):
+        try:
+            url = f"{self.host}/rest/chat/{self.instance_key}/presenceUpdateChat"
+            payload = {"to": self._format_number(phone), "option": status}
+            requests.post(url, json=payload, headers=self.headers, timeout=2)
+        except: pass
+
+    def config_webhook(self, url_webhook):
+        try:
+            url = f"{self.host}/rest/webhook/{self.instance_key}/configWebhook"
+            payload = {"messageData": {"webhookUrl": url_webhook, "webhookEnabled": True}}
+            resp = requests.post(url, json=payload, headers=self.headers, timeout=10)
             return resp.json()
         except Exception as e: return {"error": True, "message": str(e)}
 
@@ -240,7 +292,8 @@ class MegaAPI:
                 def replace_vars(obj):
                     if isinstance(obj, str):
                         for k, v in dados_replace.items():
-                            obj = obj.replace(f"{{{k}}}", str(v))
+                            tag = f"{{{k}}}"
+                            obj = obj.replace(tag, str(v))
                         return obj
                     elif isinstance(obj, dict): return {k: replace_vars(v) for k, v in obj.items()}
                     elif isinstance(obj, list): return [replace_vars(i) for i in obj]
@@ -252,17 +305,54 @@ class MegaAPI:
             if msg_type == 'text':
                 return self._post("text", {"messageData": {"to": to_formatted, "text": content.get('content')}})
             elif msg_type == 'media':
-                return self._post("mediaUrl", {"messageData": {"to": to_formatted, "url": content.get('url'), "type": content.get('mediaType', 'image'), "caption": content.get('caption', ''), "mimeType": content.get('mimeType', '')}})
+                return self._post("mediaUrl", {
+                    "messageData": {
+                        "to": to_formatted, "url": content.get('url'), 
+                        "type": content.get('mediaType', 'image'), 
+                        "caption": content.get('caption', ''),
+                        "mimeType": content.get('mimeType', '')
+                    }
+                })
             elif msg_type == 'button':
-                return self._post("buttonMessage", {"messageData": {"to": to_formatted, "title": content.get('title'), "text": content.get('text'), "footer": content.get('footer'), "buttons": content.get('buttons')}})
+                return self._post("buttonMessage", {
+                    "messageData": {
+                        "to": to_formatted, "title": content.get('title'), 
+                        "text": content.get('text'), 
+                        "footer": content.get('footer'), 
+                        "buttons": content.get('buttons')
+                    }
+                })
             elif msg_type == 'list':
-                return self._post("listMessage", {"messageData": {"to": to_formatted, "buttonText": content.get('buttonText'), "text": content.get('text'), "title": content.get('title'), "description": content.get('description'), "sections": content.get('sections'), "listType": 0}})
+                return self._post("listMessage", {
+                    "messageData": {
+                        "to": to_formatted, "buttonText": content.get('buttonText'), 
+                        "text": content.get('text'), 
+                        "title": content.get('title'), 
+                        "description": content.get('description'), 
+                        "sections": content.get('sections'), 
+                        "listType": 0
+                    }
+                })
             elif msg_type == 'contact':
                 return self._post("contactMessage", {"messageData": {"to": to_formatted, "vcard": content.get('vcard')}})
             elif msg_type == 'location':
-                return self._post("locationMessage", {"messageData": {"to": to_formatted, "latitude": content.get('latitude'), "longitude": content.get('longitude'), "name": content.get('name'), "address": content.get('address')}})
+                return self._post("locationMessage", {
+                    "messageData": {
+                        "to": to_formatted, "latitude": content.get('latitude'), 
+                        "longitude": content.get('longitude'), 
+                        "name": content.get('name'), 
+                        "address": content.get('address')
+                    }
+                })
             return {"error": True, "message": "Tipo desconhecido"}
         except Exception as e: return {"error": True, "message": str(e)}
+
+    def verificar_status(self):
+        try:
+            url = f"{self.host}/rest/instance/{self.instance_key}"
+            resp = requests.get(url, headers=self.headers, timeout=10)
+            return resp.json()
+        except: return {"error": True}
 
 def get_api_credentials(unidade_id=None):
     if unidade_id:
@@ -272,7 +362,8 @@ def get_api_credentials(unidade_id=None):
 
 # --- CONTROLE DE ACESSO ---
 @login_manager.user_loader
-def load_user(user_id): return Usuario.query.get(int(user_id))
+def load_user(user_id):
+    return Usuario.query.get(int(user_id))
 
 def admin_required(f):
     @wraps(f)
@@ -296,19 +387,28 @@ def login():
 
 @app.route('/logout')
 @login_required
-def logout(): logout_user(); return redirect(url_for('login'))
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
 
 @app.route('/')
 @login_required
 def index():
     total_enviadas = LogEnvios.query.count()
     total_entregues = LogEnvios.query.filter_by(status_entrega='DELIVERED').count()
+    
     por_modulo = db.session.query(LogEnvios.modulo, func.count(LogEnvios.id)).group_by(LogEnvios.modulo).all()
     por_unidade_raw = db.session.query(LogEnvios.unidade, func.count(LogEnvios.id)).group_by(LogEnvios.unidade).all()
     por_unidade = [{'nome': u[0], 'qtd': u[1], 'percentual': round(u[1]/total_enviadas*100, 1) if total_enviadas else 0} for u in por_unidade_raw]
-    return render_template('index.html', total_enviadas=total_enviadas, total_entregues=total_entregues, por_modulo=por_modulo, por_unidade=por_unidade, unidades=Unidade.query.all())
 
-# --- CHATFLOW (ROTAS DO MÓDULO DE CHAT) ---
+    return render_template('index.html', 
+                           total_enviadas=total_enviadas, 
+                           total_entregues=total_entregues,
+                           por_modulo=por_modulo,
+                           por_unidade=por_unidade,
+                           unidades=Unidade.query.all())
+
+# --- CHATFLOW ---
 @app.route('/chatflow')
 @login_required
 def chatflow():
@@ -324,36 +424,66 @@ def api_get_chats():
     if filtro == 'meus': query = query.filter_by(agente_id=current_user.id)
     elif filtro == 'nao_lidos': query = query.filter_by(status='aberto')
     conversas = query.order_by(Conversa.data_atualizacao.desc()).all()
-    data = [{'id': c.id, 'nome': c.nome_cliente or c.telefone, 'telefone': c.telefone, 'ultima_msg': c.ultima_mensagem, 'hora': c.data_atualizacao.strftime('%H:%M'), 'status': c.status, 'etiquetas': json.loads(c.etiquetas) if c.etiquetas else [], 'agente_id': c.agente_id} for c in conversas]
+    data = []
+    for c in conversas:
+        data.append({
+            'id': c.id, 'nome': c.nome_cliente or c.telefone, 'telefone': c.telefone,
+            'ultima_msg': c.ultima_mensagem, 'hora': c.data_atualizacao.strftime('%H:%M'),
+            'status': c.status, 'etiquetas': json.loads(c.etiquetas) if c.etiquetas else [],
+            'foto': c.foto_perfil
+        })
     return jsonify(data)
 
 @app.route('/api/messages/<int:chat_id>', methods=['GET'])
 @login_required
 def api_get_messages(chat_id):
     msgs = MensagemChat.query.filter_by(conversa_id=chat_id).order_by(MensagemChat.data_hora).all()
-    data = [{'tipo': m.tipo, 'conteudo': m.conteudo, 'lado': 'right' if m.remetente == 'agente' else 'left', 'hora': m.data_hora.strftime('%H:%M')} for m in msgs]
-    return jsonify(data)
+    return jsonify([{'tipo': m.tipo, 'conteudo': m.conteudo, 'lado': 'right' if m.remetente == 'agente' else 'left', 'hora': m.data_hora.strftime('%H:%M')} for m in msgs])
 
 @app.route('/api/send', methods=['POST'])
 @login_required
 def api_send_message():
     data = request.json
-    chat_id = data.get('chat_id')
-    texto = data.get('texto')
-    conversa = Conversa.query.get(chat_id)
+    conversa = Conversa.query.get(data.get('chat_id'))
     if not conversa: return jsonify({'error': 'Chat não encontrado'}), 404
     conf = get_api_credentials(conversa.unidade_id)
     if not conf: return jsonify({'error': 'API não configurada'}), 400
+    
     token = decrypt_token(conf.bearer_token)
     api = MegaAPI(conf.api_host, token, conf.instance_key)
-    resp = api.enviar_texto(conversa.telefone, texto)
+    
+    resp = api.enviar_texto(conversa.telefone, data.get('texto'))
     if not resp.get('error'):
-        msg = MensagemChat(conversa_id=chat_id, remetente='agente', tipo='text', conteudo=texto, status='sent')
-        conversa.ultima_mensagem = texto
-        conversa.data_atualizacao = datetime.now()
-        db.session.add(msg); db.session.commit()
+        db.session.add(MensagemChat(conversa_id=conversa.id, remetente='agente', tipo='text', conteudo=data.get('texto'), status='sent'))
+        conversa.ultima_mensagem = data.get('texto'); conversa.data_atualizacao = datetime.now()
+        db.session.commit()
         return jsonify({'status': 'ok'})
     return jsonify({'error': resp.get('message')}), 500
+
+@app.route('/api/chat/presence', methods=['POST'])
+@login_required
+def api_presence():
+    conversa = Conversa.query.get(request.json.get('chat_id'))
+    if conversa:
+        conf = get_api_credentials(conversa.unidade_id)
+        if conf:
+            api = MegaAPI(conf.api_host, decrypt_token(conf.bearer_token), conf.instance_key)
+            api.set_presence(conversa.telefone)
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/chat/update_profile', methods=['POST'])
+@login_required
+def api_update_profile():
+    conversa = Conversa.query.get(request.json.get('chat_id'))
+    if conversa:
+        conf = get_api_credentials(conversa.unidade_id)
+        if conf:
+            api = MegaAPI(conf.api_host, decrypt_token(conf.bearer_token), conf.instance_key)
+            url = api.get_profile_picture(conversa.telefone)
+            if url:
+                conversa.foto_perfil = url; db.session.commit()
+                return jsonify({'url': url})
+    return jsonify({'url': None})
 
 @app.route('/api/update_chat', methods=['POST'])
 @login_required
@@ -371,62 +501,57 @@ def api_update_chat():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-# --- WEBHOOK (RECEBIMENTO) ---
+# --- WEBHOOK ---
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
     try:
         msg_data = data.get('data', {})
-        from_number = msg_data.get('from')
-        # Ignora mensagens enviadas por mim (no próprio celular)
-        if msg_data.get('fromMe'): return jsonify({'status': 'ignored'})
+        if not msg_data: msg_data = data
         
-        telefone = from_number.split('@')[0] if from_number else None
-        texto = msg_data.get('body', '')
+        key = msg_data.get('key', {})
+        if key.get('fromMe'): return jsonify({'status': 'ignored'})
+        
+        remote_jid = key.get('remoteJid')
+        telefone = remote_jid.split('@')[0] if remote_jid else None
+        
+        message_content = msg_data.get('message', {})
+        texto = message_content.get('conversation') or message_content.get('extendedTextMessage', {}).get('text') or message_content.get('imageMessage', {}).get('caption', '')
         
         if telefone and texto:
-            # Lógica ChatFlow: Salvar conversa
             conversa = Conversa.query.filter_by(telefone=telefone).first()
             if not conversa:
                 conversa = Conversa(telefone=telefone, nome_cliente=msg_data.get('pushName', 'Cliente'), status='aberto')
                 db.session.add(conversa); db.session.commit()
             
-            msg = MensagemChat(conversa_id=conversa.id, remetente='cliente', tipo='text', conteudo=texto, status='received')
-            conversa.ultima_mensagem = texto
-            conversa.data_atualizacao = datetime.now()
-            conversa.status = 'aberto'
-            db.session.add(msg)
+            db.session.add(MensagemChat(conversa_id=conversa.id, remetente='cliente', tipo='text', conteudo=texto, status='received'))
+            conversa.ultima_mensagem = texto; conversa.data_atualizacao = datetime.now(); conversa.status = 'aberto'
             
-            # Lógica Autoresposta
             auto = RespostaAutomatica.query.filter(RespostaAutomatica.ativo == True).all()
             for r in auto:
                 palavras = json.loads(r.palavras_chave)
                 if any(p in texto.lower() for p in palavras):
-                    # Envia resposta
                     conf = get_api_credentials()
                     if conf:
-                        token = decrypt_token(conf.bearer_token)
-                        api = MegaAPI(conf.api_host, token, conf.instance_key)
+                        api = MegaAPI(conf.api_host, decrypt_token(conf.bearer_token), conf.instance_key)
                         api.enviar_mensagem_template(telefone, r.resposta)
-                        # Registra no chat
-                        tpl_content = json.loads(r.resposta).get('content', '[AutoResposta]')
-                        db.session.add(MensagemChat(conversa_id=conversa.id, remetente='agente', tipo='text', conteudo=tpl_content, status='sent'))
-                        conversa.ultima_mensagem = tpl_content
+                        resp_content = json.loads(r.resposta).get('content', '[AutoResposta]')
+                        db.session.add(MensagemChat(conversa_id=conversa.id, remetente='agente', tipo='text', conteudo=resp_content, status='sent'))
+                        conversa.ultima_mensagem = resp_content
                     break
-            
             db.session.commit()
     except Exception as e: print(f"Webhook Error: {e}")
     return jsonify({'status': 'ok'})
 
-# --- ROTAS PADRÃO ---
+# --- OUTRAS ROTAS ---
+
 @app.route('/usuarios', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def usuarios():
     if request.method == 'POST':
         u = Usuario(username=request.form['username'], nivel_acesso=request.form['nivel_acesso'], unidade=request.form.get('unidade'))
-        u.set_password(request.form['password'])
-        db.session.add(u); db.session.commit(); flash('Usuário criado', 'success')
+        u.set_password(request.form['password']); db.session.add(u); db.session.commit(); flash('Usuário criado', 'success')
         return redirect(url_for('usuarios'))
     return render_template('usuarios.html', usuarios=Usuario.query.all(), unidades=Unidade.query.all())
 
@@ -440,10 +565,7 @@ def excluir_usuario(id):
 @app.route('/boas-vindas', methods=['GET', 'POST'])
 @login_required
 def boas_vindas():
-    layouts = LayoutImportacao.query.all()
-    templates = Template.query.filter_by(modulo='geral').all()
-    preview = []
-    lid, tid = None, None
+    layouts = LayoutImportacao.query.all(); templates = Template.query.filter_by(modulo='geral').all(); preview = []
     if request.method == 'POST':
         if 'file' in request.files:
             file = request.files['file']; lid = request.form.get('layout_id'); tid = request.form.get('template_id')
@@ -465,7 +587,7 @@ def boas_vindas():
             dados_envio = request.form.getlist('dados_envio'); sucesso = 0
             for item in dados_envio:
                 try:
-                    d = json.loads(item.replace("'", '"')); conf = get_api_credentials(d['unidade_id'])
+                    d = json.loads(item.replace("'", '"')); conf = get_api_credentials(d.get('unidade_id'))
                     if conf:
                         token = decrypt_token(conf.bearer_token); api = MegaAPI(conf.api_host, token, conf.instance_key)
                         tpl = Template.query.get(d['template_id']); replace = {k.upper(): v for k, v in d['dados'].items()}
@@ -473,15 +595,12 @@ def boas_vindas():
                         if not resp.get('error'): sucesso += 1; db.session.add(LogEnvios(telefone=d['dados']['telefone'], unidade=d['dados'].get('unidade'), modulo='boas_vindas', message_id=resp.get('key', {}).get('id'), status_entrega='PENDING'))
                 except: pass
             db.session.commit(); flash(f'{sucesso} enviadas.', 'success'); return redirect(url_for('boas_vindas'))
-    return render_template('boas_vindas.html', layouts=layouts, templates=templates, preview=preview, layout_selecionado=int(lid) if lid else None, template_selecionado=int(tid) if tid else None)
+    return render_template('boas_vindas.html', layouts=layouts, templates=templates, preview=preview)
 
 @app.route('/cobranca', methods=['GET', 'POST'])
 @login_required
 def cobranca():
-    layouts = LayoutImportacao.query.all()
-    templates_cobranca = Template.query.filter(Template.regras != None).all()
-    preview = []
-    lid = None
+    layouts = LayoutImportacao.query.all(); templates_cobranca = Template.query.filter(Template.regras != None).all(); preview = []
     if request.method == 'POST':
         if 'file' in request.files:
             file = request.files['file']; lid = request.form.get('layout_id')
@@ -490,48 +609,28 @@ def cobranca():
                 try:
                     map_dict = json.loads(layout.mapeamento_json); dados = processar_upload_excel(path, map_dict)
                     for d in dados:
-                        dias_sem_acesso = calcular_dias_sem_acesso(d.get('data_hora_ultimo_acesso', '')); meses_ativo = calcular_meses_ativo(d.get('inicio_plano'), d.get('tempo_ativo'))
+                        dias = calcular_dias_sem_acesso(d.get('data_hora_ultimo_acesso', '')); meses = calcular_meses_ativo(d.get('inicio_plano'), d.get('tempo_ativo'))
                         debitos = int(float(d.get('debitos', 0))) if d.get('debitos') else 0; valor = float(d.get('valor', 0)) if d.get('valor') else 0.0
-                        d.update({'dias_sem_acesso': dias_sem_acesso, 'meses_ativo': meses_ativo})
-                        template_match = None; status = "Sem Regra"
+                        d.update({'dias_sem_acesso': dias, 'meses_ativo': meses})
+                        tpl_match = None
                         for tpl in templates_cobranca:
                             r = json.loads(tpl.regras)
-                            check_fin = (r.get('min_debitos', 0) <= debitos <= r.get('max_debitos', 999) and r.get('min_dias', 0) <= dias_sem_acesso <= r.get('max_dias', 999) and r.get('min_valor', 0) <= valor)
-                            if not check_fin: continue
-                            if r.get('unidade_filtro') and r['unidade_filtro'] != 'Todas':
-                                if r['unidade_filtro'].lower().strip() != d.get('unidade', '').lower().strip(): continue
-                            if r.get('plano_filtro') and r['plano_filtro'] != 'Todos':
-                                if r['plano_filtro'].lower() not in d.get('plano', '').lower(): continue
-                            if r.get('min_meses_ativo') and int(r['min_meses_ativo']) > 0:
-                                if meses_ativo < int(r['min_meses_ativo']): continue
-                            template_match = tpl; break
-                        if template_match:
-                            last_cob = HistoricoCobranca.query.filter_by(telefone=d['telefone']).order_by(HistoricoCobranca.data_envio.desc()).first()
-                            if last_cob and last_cob.proxima_cobranca_permitida and last_cob.proxima_cobranca_permitida > date.today(): status = f"Cooldown"; template_match = None
-                            else: status = "Pronto"
-                        msg_prev = ""
-                        if template_match:
-                            tpl_json = json.loads(template_match.conteudo); msg_prev = tpl_json.get('content', tpl_json.get('text', ''))
-                            for k, v in d.items(): msg_prev = msg_prev.replace(f"{{{k.upper()}}}", str(v))
-                        if template_match or "Cooldown" in status:
-                            preview.append({'dados': d, 'status': status, 'unidade_id': None, 'template_id': template_match.id if template_match else None, 'template_nome': template_match.nome if template_match else "-", 'msg_preview': msg_prev, 'nome': d.get('aluno'), 'detalhes': f"{debitos} débitos | {dias_sem_acesso}d s/ acesso"})
-                except Exception as e: flash(f"Erro: {e}", 'error')
+                            if (r.get('min_debitos', 0) <= debitos <= r.get('max_debitos', 999) and r.get('min_dias', 0) <= dias <= r.get('max_dias', 999)): tpl_match = tpl; break
+                        if tpl_match:
+                            preview.append({'dados': d, 'status': 'Pronto', 'unidade_id': None, 'template_id': tpl_match.id, 'template_nome': tpl_match.nome, 'msg_preview': '...', 'nome': d.get('aluno')})
+                except: pass
         elif 'confirmar_envio' in request.form:
-            dados = request.form.getlist('dados_envio'); sucesso = 0
+            dados = request.form.getlist('dados_envio')
             for item in dados:
                 try:
-                    d = json.loads(item.replace("'", '"')); conf = get_api_credentials(d['unidade_id'])
-                    if d['status'] == "Pronto" and conf:
-                        token = decrypt_token(conf.bearer_token); api = MegaAPI(conf.api_host, token, conf.instance_key)
-                        tpl = Template.query.get(d['template_id']); regras = json.loads(tpl.regras)
-                        replace = {k.upper(): v for k, v in d['dados'].items()}
-                        resp = api.enviar_mensagem_template(d['dados']['telefone'], tpl.conteudo, replace)
-                        if not resp.get('error'):
-                            sucesso += 1; db.session.add(LogEnvios(telefone=d['dados']['telefone'], modulo='cobranca', message_id=resp.get('key', {}).get('id'), status_entrega='PENDING'))
-                            prox = date.today() + timedelta(days=int(regras.get('cooldown', 7))); db.session.add(HistoricoCobranca(telefone=d['dados']['telefone'], proxima_cobranca_permitida=prox, template_usado=tpl.nome))
+                    d = json.loads(item.replace("'", '"')); conf = get_api_credentials(d.get('unidade_id'))
+                    if conf:
+                        api = MegaAPI(conf.api_host, decrypt_token(conf.bearer_token), conf.instance_key)
+                        tpl = Template.query.get(d['template_id']); replace = {k.upper(): v for k, v in d['dados'].items()}
+                        api.enviar_mensagem_template(d['dados']['telefone'], tpl.conteudo, replace)
                 except: pass
-            db.session.commit(); flash(f'{sucesso} cobranças enviadas.', 'success'); return redirect(url_for('cobranca'))
-    return render_template('cobranca.html', layouts=layouts, preview=preview, layout_selecionado=int(lid) if lid else None)
+            return redirect(url_for('cobranca'))
+    return render_template('cobranca.html', layouts=layouts, preview=preview)
 
 @app.route('/config-regras/<int:id>', methods=['GET', 'POST'])
 @login_required
@@ -622,12 +721,21 @@ def excluir_unidade(id): u = Unidade.query.get(id); db.session.delete(u); db.ses
 @admin_required
 def config_api():
     if request.method == 'POST':
-        uid = request.form.get('unidade_id'); target = int(uid) if (request.form.get('tipo_config') == 'especifica' and uid) else None
-        antiga = ConfigAPI.query.filter_by(unidade_id=target).first(); 
-        if antiga: db.session.delete(antiga)
-        token_enc = encrypt_token(request.form['bearer_token'])
-        db.session.add(ConfigAPI(unidade_id=target, api_host=request.form['api_host'], instance_key=request.form['instance_key'], bearer_token=token_enc)); db.session.commit()
-        return redirect(url_for('config_api'))
+        if 'acao' in request.form and request.form['acao'] == 'webhook':
+            conf = ConfigAPI.query.get(request.form['config_id'])
+            if conf:
+                token = decrypt_token(conf.bearer_token)
+                api = MegaAPI(conf.api_host, token, conf.instance_key)
+                webhook_url = url_for('webhook', _external=True).replace('http://', 'https://') 
+                resp = api.config_webhook(webhook_url)
+                flash(f"Webhook configurado: {resp.get('message', 'OK')}", 'success')
+        else:
+            uid = request.form.get('unidade_id'); target = int(uid) if (request.form.get('tipo_config') == 'especifica' and uid) else None
+            antiga = ConfigAPI.query.filter_by(unidade_id=target).first()
+            if antiga: db.session.delete(antiga)
+            token_enc = encrypt_token(request.form['bearer_token'])
+            db.session.add(ConfigAPI(unidade_id=target, api_host=request.form['api_host'], instance_key=request.form['instance_key'], bearer_token=token_enc)); db.session.commit()
+            return redirect(url_for('config_api'))
     return render_template('config_api.html', configs=ConfigAPI.query.all(), unidades=Unidade.query.all())
 
 @app.route('/excluir-api/<int:id>')
@@ -651,9 +759,9 @@ def excluir_gerente(id): g = Gerente.query.get(id); db.session.delete(g); db.ses
 @login_required
 def respostas():
     if request.method == 'POST':
-        palavras = request.form.get('palavras').split(','); palavras = [p.strip().lower() for p in palavras if p.strip()]
-        conteudo_resposta = {"type": "text", "content": request.form.get('texto_resposta')}
-        db.session.add(RespostaAutomatica(palavras_chave=json.dumps(palavras), resposta=json.dumps(conteudo_resposta))); db.session.commit(); return redirect(url_for('respostas'))
+        palavras = json.dumps(request.form.get('palavras').split(','))
+        resp = json.dumps({"type": "text", "content": request.form.get('texto_resposta')})
+        db.session.add(RespostaAutomatica(palavras_chave=palavras, resposta=resp)); db.session.commit(); return redirect(url_for('respostas'))
     respostas = RespostaAutomatica.query.all()
     for r in respostas: r.palavras_lista = json.loads(r.palavras_chave); r.conteudo_dict = json.loads(r.resposta)
     return render_template('respostas.html', respostas=respostas)
@@ -672,8 +780,11 @@ def teste():
                 resp = api.verificar_status()
                 resultado = {'tipo': 'sucesso', 'msg': 'Conectado'} if not resp.get('error') else {'tipo': 'erro', 'msg': 'Erro'}
             elif acao == 'envio':
-                resp = api.enviar_mensagem_template(telefone, json.dumps({"type": "text", "content": mensagem}))
-                resultado = {'tipo': 'sucesso', 'msg': 'Enviado'} if not resp.get('error') else {'tipo': 'erro', 'msg': 'Erro envio'}
+                if not api.is_on_whatsapp(telefone):
+                    resultado = {'tipo': 'erro', 'msg': 'Número não existe no WhatsApp'}
+                else:
+                    resp = api.enviar_mensagem_template(telefone, json.dumps({"type": "text", "content": mensagem}))
+                    resultado = {'tipo': 'sucesso', 'msg': 'Enviado'} if not resp.get('error') else {'tipo': 'erro', 'msg': 'Erro envio'}
     return render_template('teste.html', unidades=unidades, resultado=resultado)
 
 @app.cli.command("criar-admin")
@@ -682,6 +793,23 @@ def criar_admin():
     if not Usuario.query.filter_by(username='admin').first():
         u = Usuario(username='admin', nivel_acesso='admin'); u.set_password('admin123'); db.session.add(u); db.session.commit(); print("Admin criado.")
 
+# ... (Todo o código anterior das rotas e CLI) ...
+
+def open_browser():
+    # Abre o navegador padrão após 1.5 segundos
+    webbrowser.open_new("http://127.0.0.1:5000/")
+
 if __name__ == '__main__':
-    with app.app_context(): db.create_all()
-    app.run(debug=True, port=5000)
+    with app.app_context():
+        db.create_all()
+        # Garante que a chave secreta existe (importante para o exe)
+        if not os.path.exists(KEY_FILE):
+            with open(KEY_FILE, 'wb') as key_file:
+                key_file.write(Fernet.generate_key())
+    
+    # Agenda a abertura do navegador
+    Timer(1.5, open_browser).start()
+    
+    # Roda o app (debug=False é OBRIGATÓRIO para executáveis)
+    app.run(debug=False, port=5000)
+    
